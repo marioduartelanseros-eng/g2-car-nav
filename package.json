@@ -1,0 +1,22 @@
+{
+  "name": "g2-car-nav",
+  "version": "1.0.0",
+  "description": "Car navigation for Even Realities G2 glasses",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "simulate": "evenhub-simulator http://localhost:5173",
+    "package": "evenhub package"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "latest"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "latest",
+    "@evenrealities/evenhub-simulator": "latest",
+    "typescript": "^5.4.0",
+    "vite": "^5.4.0"
+  }
+}
