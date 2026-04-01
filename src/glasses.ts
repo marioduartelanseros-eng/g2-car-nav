@@ -4,6 +4,7 @@ import {
   CreateStartUpPageContainer,
   TextContainerUpgrade,
   ImageRawDataUpdate,
+  ImageRawDataUpdateResult,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
 import type { EvenAppBridge, EvenHubEvent } from '@evenrealities/even_hub_sdk'
@@ -16,12 +17,12 @@ export { OsEventTypeList }
 
 // ── Display layout ────────────────────────────────────────────────────────────
 //
-//  ┌────────────────────────┬───────────────────────────────┐
-//  │  Nav text              │  Map image                    │
-//  │  270 × 288 px          │  288 × 144 px  (x=288, y=72) │
-//  ├────────────────────────┴───────────────────────────────┤
-//  │  Status bar  576 × 50  (y=238)                         │
-//  └────────────────────────────────────────────────────────┘
+//  ┌───────────────────────────┬────────────────────────┐
+//  │  Nav text  270 × 230      │  Map  200 × 100        │
+//  │                           │  x=290, y=65           │
+//  ├───────────────────────────┴────────────────────────┤
+//  │  Status bar  576 × 50  (y=238)                     │
+//  └────────────────────────────────────────────────────┘
 
 const TEXT_W = 270
 const TEXT_H = 230
@@ -29,11 +30,9 @@ const STATUS_W = 576
 const STATUS_H = 50
 const STATUS_Y = 238
 
-// Map placed on the right half, vertically centered in text area
-const MAP_X = 288
-const MAP_Y = Math.round((TEXT_H - MAP_H) / 2)
+const MAP_X = 290
+const MAP_Y = Math.round((TEXT_H - MAP_H) / 2)  // vertically centered
 
-// Container IDs
 const ID_NAV    = 1
 const ID_STATUS = 2
 const ID_MAP    = 3
@@ -41,54 +40,50 @@ const ID_MAP    = 3
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function initDisplay(bridge: EvenAppBridge, message = 'G2 Car Nav\nReady'): Promise<void> {
-  const navContainer = makeText(ID_NAV, 'nav', message, TEXT_W, TEXT_H, 0, 0, true)
-  const statusContainer = makeText(ID_STATUS, 'status', 'Waiting for GPS...', STATUS_W, STATUS_H, 0, STATUS_Y, false)
-  const mapContainer = makeImageContainer(ID_MAP, 'map', MAP_X, MAP_Y)
-
   const page = new CreateStartUpPageContainer({
     containerTotalNum: 3,
-    textObject: [navContainer, statusContainer],
-    imageObject: [mapContainer],
+    textObject: [
+      makeText(ID_NAV,    'nav',    message,               TEXT_W,   TEXT_H,   0, 0,        true),
+      makeText(ID_STATUS, 'status', 'Waiting for GPS...',  STATUS_W, STATUS_H, 0, STATUS_Y, false),
+    ],
+    imageObject: [
+      makeImageContainer(ID_MAP, 'map', MAP_X, MAP_Y),
+    ],
   })
 
   const result = await bridge.createStartUpPageContainer(page)
-  if (result !== 0) console.warn('[G2] createStartUpPageContainer returned', result)
-
-  // README: "call updateImageRawData immediately after creation to initialize the container"
-  // Send a blank black image so the container is ready to receive map data later
-  await sendMapImage(bridge, blankImage())
+  console.log('[G2] createStartUpPageContainer result:', result)
+  // Note: do NOT send image data here — README says image content cannot be
+  // transmitted during the startup stage. First image send happens when
+  // navigation starts and a real map is available.
 }
 
-/**
- * Update nav text + status bar, then send map image.
- * Image send is SEQUENTIAL after text (SDK requirement: no concurrent image sends).
- */
 export async function updateNavDisplay(
   bridge: EvenAppBridge,
   step: NavStep,
   distanceToStep: number,
   route: Route,
   stepIndex: number,
-  mapPixels: number[] | null,
+  mapBase64: string | null,
 ): Promise<void> {
   const isLast = stepIndex >= route.steps.length - 1
 
-  // Send text updates concurrently (text-only, no image)
+  // Text updates first (concurrent is fine for text)
   await Promise.all([
-    updateText(bridge, ID_NAV, 'nav', buildNavText(step, distanceToStep, isLast)),
+    updateText(bridge, ID_NAV,    'nav',    buildNavText(step, distanceToStep, isLast)),
     updateText(bridge, ID_STATUS, 'status', buildStatusText(route, stepIndex, distanceToStep)),
   ])
 
-  // Send image AFTER text resolves — SDK requires sequential image sends
-  if (mapPixels) {
-    await sendMapImage(bridge, mapPixels)
+  // Image AFTER text — SDK requires sequential, no concurrent image sends
+  if (mapBase64) {
+    await sendMapImage(bridge, mapBase64)
   }
 }
 
 export async function showMessage(bridge: EvenAppBridge, title: string, body = ''): Promise<void> {
   const text = body ? `${title}\n\n${body}` : title
   await Promise.all([
-    updateText(bridge, ID_NAV, 'nav', text),
+    updateText(bridge, ID_NAV,    'nav',    text),
     updateText(bridge, ID_STATUS, 'status', ''),
   ])
 }
@@ -106,10 +101,13 @@ export async function showStepPreview(
   await updateText(bridge, ID_NAV, 'nav', text)
 }
 
-export async function sendMapImage(bridge: EvenAppBridge, pixels: number[]): Promise<void> {
-  await bridge.updateImageRawData(
-    new ImageRawDataUpdate({ containerID: ID_MAP, containerName: 'map', imageData: pixels })
+export async function sendMapImage(bridge: EvenAppBridge, imageData: string): Promise<void> {
+  const result = await bridge.updateImageRawData(
+    new ImageRawDataUpdate({ containerID: ID_MAP, containerName: 'map', imageData })
   )
+  if (!ImageRawDataUpdateResult.isSuccess(result)) {
+    console.warn('[G2] updateImageRawData failed:', result)
+  }
 }
 
 // ── Container factories ───────────────────────────────────────────────────────
@@ -157,12 +155,4 @@ function buildStatusText(route: Route, stepIndex: number, distToCurrentStep: num
   const remaining = distToCurrentStep + remainingAfterCurrent
   const etaSeconds = (remaining / route.totalDistance) * route.totalDuration
   return `${formatDistance(remaining)} left  |  ETA ${formatDuration(etaSeconds)}`
-}
-
-// ── Blank image ───────────────────────────────────────────────────────────────
-
-/** All-black placeholder image — one byte per two pixels, all zero. */
-function blankImage(): number[] {
-  const byteCount = Math.ceil((MAP_W * MAP_H) / 2)
-  return new Array(byteCount).fill(0)
 }

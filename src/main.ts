@@ -120,8 +120,8 @@ async function startNavigation(destination: string) {
   const step = currentRoute.steps[0]
   const nextLoc = currentRoute.steps[1]?.location ?? step.location
   const dist = haversineDistance(position, nextLoc)
-  const mapPixels = renderMapImage(currentRoute.geometry, position, nextLoc)
-  await updateNavDisplay(bridge, step, dist, currentRoute, 0, mapPixels)
+  const mapBase64 = renderMapImage(currentRoute.geometry, position, nextLoc)
+  await updateNavDisplay(bridge, step, dist, currentRoute, 0, mapBase64)
 
   setStatus(`Navigating — ${formatDistance(currentRoute.totalDistance)}, ${formatDuration(currentRoute.totalDuration)}`)
   startTracking()
@@ -149,8 +149,8 @@ async function recalculate(destination: [number, number]) {
     const step = currentRoute.steps[0]
     const nextLoc = currentRoute.steps[1]?.location ?? step.location
     const dist = haversineDistance(lastPosition, nextLoc)
-    const mapPixels = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
-    await updateNavDisplay(bridge, step, dist, currentRoute, 0, mapPixels)
+    const mapBase64 = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
+    await updateNavDisplay(bridge, step, dist, currentRoute, 0, mapBase64)
     setStatus('Route updated.')
   } catch {
     setStatus('Recalculation failed.')
@@ -194,13 +194,13 @@ async function onPosition(pos: GeolocationPosition) {
 
   if (previewOffset === 0) {
     // Render map (skip if a send is already in flight to avoid concurrent sends)
-    let mapPixels: number[] | null = null
+    let mapBase64: string | null = null
     if (!mapSendInFlight) {
-      mapPixels = renderMapImage(currentRoute.geometry, coords, isLast ? null : nextLoc)
+      mapBase64 = renderMapImage(currentRoute.geometry, coords, isLast ? null : nextLoc)
       mapSendInFlight = true
     }
 
-    await updateNavDisplay(bridge, step, distToNext, currentRoute, activeStepIndex, mapPixels)
+    await updateNavDisplay(bridge, step, distToNext, currentRoute, activeStepIndex, mapBase64)
     mapSendInFlight = false
   }
 
@@ -231,8 +231,8 @@ function handleGlassesInput(event: EvenHubEvent) {
       const step = currentRoute.steps[activeStepIndex]
       const nextLoc = currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
       const dist = haversineDistance(lastPosition, nextLoc)
-      const mapPixels = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
-      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex, mapPixels)
+      const mapBase64 = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
+      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex, mapBase64)
     } else if (previewOffset > 0) {
       const step = currentRoute.steps[activeStepIndex + previewOffset]
       showStepPreview(bridge, step, activeStepIndex + previewOffset + 1, total)
@@ -246,8 +246,8 @@ function handleGlassesInput(event: EvenHubEvent) {
       const step = currentRoute.steps[activeStepIndex]
       const nextLoc = currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
       const dist = haversineDistance(lastPosition, nextLoc)
-      const mapPixels = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
-      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex, mapPixels)
+      const mapBase64 = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
+      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex, mapBase64)
     }
     return
   }
