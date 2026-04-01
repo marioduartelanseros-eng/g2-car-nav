@@ -4,7 +4,7 @@ export default defineConfig({
   base: '/g2-car-nav/',
   server: {
     host: true,
-    port: 5173,
+    port: process.env.PORT ? parseInt(process.env.PORT) : 5173,
   },
   build: {
     outDir: 'dist',
