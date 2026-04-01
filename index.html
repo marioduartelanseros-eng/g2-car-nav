@@ -225,6 +225,32 @@
       text-align: center;
       min-height: 18px;
     }
+
+    /* Map debug preview */
+    #map-preview {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    #map-preview.visible { display: flex; }
+
+    #map-preview label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    #map-debug {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      image-rendering: pixelated;
+      background: #000;
+    }
   </style>
 </head>
 <body>
@@ -277,6 +303,11 @@
   </div>
 
   <div id="status-bar">Connecting to G2...</div>
+
+  <div id="map-preview">
+    <label>Map preview (sent to glasses)</label>
+    <canvas id="map-debug"></canvas>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

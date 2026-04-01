@@ -277,6 +277,8 @@ function setStatus(msg: string) {
 function setNavigating(active: boolean) {
   document.getElementById('nav-form')!.style.display = active ? 'none' : 'flex'
   document.getElementById('active-nav')!.style.display = active ? 'flex' : 'none'
+  const preview = document.getElementById('map-preview')
+  if (preview) preview.classList.toggle('visible', active)
 }
 
 function updateSpeedDisplay(speedMs: number | null) {
