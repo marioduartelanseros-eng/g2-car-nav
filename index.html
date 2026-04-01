@@ -7,10 +7,24 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg: #f5f3ef;
+      --surface: #ffffff;
+      --border: #e4e1da;
+      --text-primary: #1a1a1a;
+      --text-secondary: #6b6560;
+      --text-muted: #9e9890;
+      --accent: #3a6b3a;
+      --accent-light: #eef4ee;
+      --accent-text: #2d542d;
+      --danger: #b94040;
+      --danger-light: #fdf1f1;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0d0d0d;
-      color: #f0f0f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
       min-height: 100dvh;
       display: flex;
       flex-direction: column;
@@ -20,140 +34,144 @@
     }
 
     .card {
-      background: #1a1a1a;
-      border: 1px solid #2e2e2e;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 16px;
       padding: 28px 24px;
       width: 100%;
-      max-width: 400px;
+      max-width: 380px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
     }
 
     .logo {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 24px;
+      gap: 12px;
+      margin-bottom: 28px;
     }
 
     .logo-icon {
-      width: 36px;
-      height: 36px;
-      background: #00e5a0;
-      border-radius: 8px;
+      width: 38px;
+      height: 38px;
+      background: var(--accent);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      color: #fff;
+      font-size: 16px;
     }
 
-    .logo h1 {
-      font-size: 18px;
+    .logo-text h1 {
+      font-size: 16px;
       font-weight: 600;
-      color: #f0f0f0;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
     }
 
-    .logo span {
+    .logo-text span {
       font-size: 12px;
-      color: #888;
-      display: block;
-      font-weight: 400;
+      color: var(--text-muted);
     }
 
-    /* Destination form */
+    /* Form */
     #nav-form {
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
 
-    #nav-form, #active-nav {
-      display: flex;
-    }
+    #nav-form, #active-nav { display: flex; }
 
     label {
-      font-size: 12px;
-      color: #888;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 4px;
+      letter-spacing: 0.07em;
+      margin-bottom: 6px;
       display: block;
     }
 
     input[type="text"] {
       width: 100%;
-      background: #111;
-      border: 1px solid #333;
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 12px 14px;
-      color: #f0f0f0;
+      color: var(--text-primary);
       font-size: 15px;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      -webkit-appearance: none;
     }
 
     input[type="text"]:focus {
-      border-color: #00e5a0;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(58, 107, 58, 0.1);
     }
 
-    input[type="text"]::placeholder {
-      color: #555;
-    }
+    input[type="text"]::placeholder { color: var(--text-muted); }
 
     .btn {
       width: 100%;
       padding: 13px;
       border-radius: 10px;
       border: none;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.15s;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.01em;
     }
 
-    .btn:active { opacity: 0.75; }
+    .btn:active { opacity: 0.8; transform: scale(0.99); }
 
     .btn-primary {
-      background: #00e5a0;
-      color: #000;
-    }
-
-    .btn-danger {
-      background: #ff4d4d;
+      background: var(--accent);
       color: #fff;
     }
 
-    .btn-secondary {
-      background: #2a2a2a;
-      color: #ccc;
-      border: 1px solid #333;
+    .btn-danger {
+      background: var(--danger-light);
+      color: var(--danger);
+      border: 1px solid #f0d0d0;
     }
 
-    /* Active navigation panel */
+    .btn-secondary {
+      background: var(--bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    /* Active navigation */
     #active-nav {
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
       display: none;
     }
 
     .nav-info {
-      background: #111;
-      border: 1px solid #2a2a2a;
+      background: var(--accent-light);
+      border: 1px solid #d4e8d4;
       border-radius: 10px;
-      padding: 14px;
+      padding: 14px 16px;
     }
 
     .nav-info-label {
       font-size: 11px;
-      color: #666;
+      font-weight: 500;
+      color: var(--accent-text);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 6px;
+      letter-spacing: 0.07em;
+      margin-bottom: 4px;
     }
 
     .speed-display {
-      font-size: 28px;
+      font-size: 30px;
       font-weight: 700;
-      color: #00e5a0;
+      color: var(--accent);
       font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
     }
 
     .btn-row {
@@ -161,47 +179,51 @@
       gap: 8px;
     }
 
-    .btn-row .btn {
-      flex: 1;
-    }
+    .btn-row .btn { flex: 1; }
 
-    /* Status bar */
-    #status-bar {
-      margin-top: 20px;
-      font-size: 12px;
-      color: #666;
-      text-align: center;
-      min-height: 18px;
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 20px 0;
     }
 
     /* Gestures hint */
-    .hint {
-      margin-top: 16px;
-      background: #131313;
-      border: 1px solid #222;
-      border-radius: 10px;
-      padding: 12px 14px;
-    }
-
     .hint h3 {
       font-size: 11px;
-      color: #555;
+      font-weight: 500;
+      color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 8px;
+      letter-spacing: 0.07em;
+      margin-bottom: 10px;
     }
 
     .hint-row {
       display: flex;
       justify-content: space-between;
-      font-size: 12px;
-      color: #666;
-      padding: 2px 0;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 4px 0;
     }
 
     .hint-row span:first-child {
-      color: #00e5a0;
-      font-weight: 600;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    /* Status */
+    #status-bar {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      min-height: 18px;
     }
   </style>
 </head>
@@ -209,10 +231,13 @@
   <div class="card">
     <div class="logo">
       <div class="logo-icon">&#9652;</div>
-      <h1>G2 Car Nav <span>Even Realities G2</span></h1>
+      <div class="logo-text">
+        <h1>G2 Car Nav</h1>
+        <span>Even Realities G2</span>
+      </div>
     </div>
 
-    <!-- Destination input form (shown when not navigating) -->
+    <!-- Destination input -->
     <form id="nav-form">
       <div>
         <label for="destination">Destination</label>
@@ -227,26 +252,27 @@
       <button type="submit" class="btn btn-primary">Start Navigation</button>
     </form>
 
-    <!-- Active navigation panel (shown while navigating) -->
+    <!-- Active navigation -->
     <div id="active-nav">
       <div class="nav-info">
         <div class="nav-info-label">Speed</div>
         <div class="speed-display" id="speed">-- km/h</div>
       </div>
-
       <div class="btn-row">
         <button id="recalc-btn" class="btn btn-secondary">Recalculate</button>
         <button id="stop-btn" class="btn btn-danger">Stop</button>
       </div>
     </div>
 
-    <!-- Glasses gesture cheat-sheet -->
+    <div class="divider"></div>
+
+    <!-- Gestures -->
     <div class="hint">
       <h3>G2 Gestures</h3>
       <div class="hint-row"><span>Swipe Up</span><span>Preview next step</span></div>
       <div class="hint-row"><span>Swipe Down</span><span>Go back a step</span></div>
       <div class="hint-row"><span>Press</span><span>Return to current</span></div>
-      <div class="hint-row"><span>Double Press</span><span>Recalculate route</span></div>
+      <div class="hint-row"><span>Double Press</span><span>Recalculate</span></div>
     </div>
   </div>
 

@@ -1,4 +1,6 @@
 import { waitForEvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { OsEventTypeList } from '@evenrealities/even_hub_sdk'
+import type { EvenAppBridge, EvenHubEvent } from '@evenrealities/even_hub_sdk'
 import {
   geocodeAddress,
   getDrivingRoute,
@@ -14,39 +16,41 @@ import {
   showMessage,
   showStepPreview,
 } from './glasses'
-import type { EvenBridge } from './glasses'
-
-// ── SDK input event constants ─────────────────────────────────────────────────
-const CLICK = 0
-const SCROLL_UP = 1
-const SCROLL_DOWN = 2
-const DOUBLE_CLICK = 3
 
 // ── App state ─────────────────────────────────────────────────────────────────
-let bridge: EvenBridge | null = null
+let bridge: EvenAppBridge | null = null
 let watchId: number | null = null
 let currentRoute: Route | null = null
 let activeStepIndex = 0
-let previewOffset = 0          // 0 = show active step, +N = preview N steps ahead
+let previewOffset = 0
 let lastPosition: [number, number] | null = null
 let isNavigating = false
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 async function boot() {
-  // Connect to glasses
-  bridge = (await waitForEvenAppBridge()) as unknown as EvenBridge
+  setStatus('Connecting to G2...')
+
+  try {
+    bridge = await Promise.race([
+      waitForEvenAppBridge(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 8000)
+      ),
+    ])
+  } catch {
+    setStatus('Open this page in the Even Realities app to connect your G2.')
+    return
+  }
+
   await initDisplay(bridge)
 
-  // Register input handler
-  bridge.onEvenHubEvent((eventType) => {
-    handleGlassesInput(eventType)
+  bridge.onEvenHubEvent((event: EvenHubEvent) => {
+    handleGlassesInput(event)
   })
 
-  // Wire up phone UI
   setupPhoneUI()
-
-  setStatus('Connected to G2. Enter a destination.')
+  setStatus('Connected — enter a destination.')
 }
 
 // ── Phone UI ──────────────────────────────────────────────────────────────────
@@ -94,7 +98,7 @@ async function startNavigation(destination: string) {
   try {
     position = await getCurrentPosition()
   } catch {
-    setStatus('GPS unavailable. Enable location access.')
+    setStatus('GPS unavailable — enable location in settings.')
     await showMessage(bridge, 'GPS error', 'Enable location\naccess on phone')
     return
   }
@@ -114,13 +118,11 @@ async function startNavigation(destination: string) {
   setNavigating(true)
 
   const step = currentRoute.steps[0]
-  const dist = haversineDistance(position, step.location)
+  const nextLoc = currentRoute.steps[1]?.location ?? step.location
+  const dist = haversineDistance(position, nextLoc)
   await updateNavDisplay(bridge, step, dist, currentRoute, 0)
 
-  const totalDist = formatDistance(currentRoute.totalDistance)
-  const totalEta = formatDuration(currentRoute.totalDuration)
-  setStatus(`Navigating — ${totalDist}, ${totalEta}`)
-
+  setStatus(`Navigating — ${formatDistance(currentRoute.totalDistance)}, ${formatDuration(currentRoute.totalDuration)}`)
   startTracking()
 }
 
@@ -146,7 +148,8 @@ async function recalculate(destination: [number, number]) {
     activeStepIndex = 0
     previewOffset = 0
     const step = currentRoute.steps[0]
-    const dist = haversineDistance(lastPosition, step.location)
+    const nextLoc = currentRoute.steps[1]?.location ?? step.location
+    const dist = haversineDistance(lastPosition, nextLoc)
     await updateNavDisplay(bridge, step, dist, currentRoute, 0)
     setStatus('Route updated.')
   } catch {
@@ -159,10 +162,9 @@ async function recalculate(destination: [number, number]) {
 
 function startTracking() {
   if (watchId !== null) navigator.geolocation.clearWatch(watchId)
-
   watchId = navigator.geolocation.watchPosition(
     onPosition,
-    onPositionError,
+    (err) => setStatus(`GPS error: ${err.message}`),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 },
   )
 }
@@ -173,22 +175,19 @@ async function onPosition(pos: GeolocationPosition) {
   const coords: [number, number] = [pos.coords.longitude, pos.coords.latitude]
   lastPosition = coords
 
-  // Advance step index if close enough to next maneuver
   const newIndex = resolveActiveStep(coords, currentRoute.steps, activeStepIndex)
-  const stepChanged = newIndex !== activeStepIndex
-  activeStepIndex = newIndex
-  if (stepChanged) previewOffset = 0  // snap back to active step on advance
+  if (newIndex !== activeStepIndex) {
+    activeStepIndex = newIndex
+    previewOffset = 0
+  }
 
   const step = currentRoute.steps[activeStepIndex]
   const isLast = activeStepIndex >= currentRoute.steps.length - 1
-
-  // Distance to the next maneuver location (end of current step)
-  const nextManeuverLocation = isLast
-    ? step.location  // already arrived
+  const nextLoc = isLast
+    ? step.location
     : currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
-  const distToNext = haversineDistance(coords, nextManeuverLocation)
+  const distToNext = haversineDistance(coords, nextLoc)
 
-  // Check arrival
   if (isLast && distToNext < 20) {
     await showMessage(bridge, '[*]  ARRIVED', 'You have reached\nyour destination')
     setStatus('Arrived!')
@@ -196,7 +195,6 @@ async function onPosition(pos: GeolocationPosition) {
     return
   }
 
-  // Only re-render if not in preview mode
   if (previewOffset === 0) {
     await updateNavDisplay(bridge, step, distToNext, currentRoute, activeStepIndex)
   }
@@ -204,64 +202,51 @@ async function onPosition(pos: GeolocationPosition) {
   updateSpeedDisplay(pos.coords.speed)
 }
 
-function onPositionError(err: GeolocationPositionError) {
-  setStatus(`GPS error: ${err.message}`)
-}
-
 // ── Glasses input ─────────────────────────────────────────────────────────────
 
-function handleGlassesInput(eventType: number | undefined) {
+function handleGlassesInput(event: EvenHubEvent) {
   if (!bridge || !currentRoute || !isNavigating) return
 
+  // Touch events come in as textEvent or sysEvent depending on which container captured them
+  const rawType = event.textEvent?.eventType ?? event.sysEvent?.eventType
   const total = currentRoute.steps.length
 
-  if (eventType === SCROLL_UP || eventType === undefined) {
-    // Swipe up: preview next step
+  if (rawType === OsEventTypeList.SCROLL_TOP_EVENT) {
     const maxPreview = total - 1 - activeStepIndex
     if (previewOffset < maxPreview) {
       previewOffset++
-      const previewIndex = activeStepIndex + previewOffset
-      const step = currentRoute.steps[previewIndex]
-      showStepPreview(bridge, step, previewIndex + 1, total)
+      const step = currentRoute.steps[activeStepIndex + previewOffset]
+      showStepPreview(bridge, step, activeStepIndex + previewOffset + 1, total)
     }
     return
   }
 
-  if (eventType === SCROLL_DOWN) {
-    // Swipe down: go back toward active step
-    if (previewOffset > 0) {
-      previewOffset--
-    }
+  if (rawType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
+    if (previewOffset > 0) previewOffset--
     if (previewOffset === 0 && lastPosition) {
-      // Back to live view
       const step = currentRoute.steps[activeStepIndex]
-      const nextLoc =
-        currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
-      const dist = lastPosition ? haversineDistance(lastPosition, nextLoc) : step.distance
+      const nextLoc = currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
+      const dist = haversineDistance(lastPosition, nextLoc)
       updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex)
     } else if (previewOffset > 0) {
-      const previewIndex = activeStepIndex + previewOffset
-      const step = currentRoute.steps[previewIndex]
-      showStepPreview(bridge, step, previewIndex + 1, total)
+      const step = currentRoute.steps[activeStepIndex + previewOffset]
+      showStepPreview(bridge, step, activeStepIndex + previewOffset + 1, total)
     }
     return
   }
 
-  if (eventType === CLICK) {
-    // Single press: snap back to current step
+  if (rawType === OsEventTypeList.CLICK_EVENT) {
     previewOffset = 0
     if (lastPosition) {
       const step = currentRoute.steps[activeStepIndex]
-      const nextLoc =
-        currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
+      const nextLoc = currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
       const dist = haversineDistance(lastPosition, nextLoc)
       updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex)
     }
     return
   }
 
-  if (eventType === DOUBLE_CLICK) {
-    // Double press: recalculate from current position to original destination
+  if (rawType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
     const dest = currentRoute.steps[currentRoute.steps.length - 1]
     recalculate(dest.location)
     return
@@ -293,16 +278,14 @@ function setNavigating(active: boolean) {
 function updateSpeedDisplay(speedMs: number | null) {
   const el = document.getElementById('speed')
   if (!el) return
-  if (speedMs == null || speedMs < 0) {
-    el.textContent = '-- km/h'
-  } else {
-    el.textContent = `${Math.round(speedMs * 3.6)} km/h`
-  }
+  el.textContent = speedMs != null && speedMs >= 0
+    ? `${Math.round(speedMs * 3.6)} km/h`
+    : '-- km/h'
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 boot().catch((err) => {
   console.error('Boot failed:', err)
-  setStatus(`Error: ${err.message}`)
+  setStatus(`Error: ${err?.message ?? err}`)
 })
