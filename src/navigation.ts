@@ -14,6 +14,7 @@ export interface Route {
   steps: NavStep[]
   totalDistance: number  // metres
   totalDuration: number  // seconds
+  geometry: [number, number][]  // [lon, lat] polyline of the full route
 }
 
 // ── Geocoding ────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ export async function getDrivingRoute(
   const url =
     `https://router.project-osrm.org/route/v1/driving/` +
     `${from[0]},${from[1]};${to[0]},${to[1]}` +
-    `?steps=true&overview=false`
+    `?steps=true&overview=simplified&geometries=geojson`
 
   const res = await fetch(url)
   const data = await res.json()
@@ -60,6 +61,7 @@ export async function getDrivingRoute(
     steps,
     totalDistance: route.distance,
     totalDuration: route.duration,
+    geometry: (route.geometry as { coordinates: [number, number][] }).coordinates,
   }
 }
 

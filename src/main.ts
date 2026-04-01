@@ -15,7 +15,9 @@ import {
   updateNavDisplay,
   showMessage,
   showStepPreview,
+  sendMapImage,
 } from './glasses'
+import { renderMapImage } from './map-renderer'
 
 // ── App state ─────────────────────────────────────────────────────────────────
 let bridge: EvenAppBridge | null = null
@@ -25,6 +27,7 @@ let activeStepIndex = 0
 let previewOffset = 0
 let lastPosition: [number, number] | null = null
 let isNavigating = false
+let mapSendInFlight = false   // prevent concurrent image sends
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -45,9 +48,7 @@ async function boot() {
 
   await initDisplay(bridge)
 
-  bridge.onEvenHubEvent((event: EvenHubEvent) => {
-    handleGlassesInput(event)
-  })
+  bridge.onEvenHubEvent((event: EvenHubEvent) => handleGlassesInput(event))
 
   setupPhoneUI()
   setStatus('Connected — enter a destination.')
@@ -70,8 +71,7 @@ function setupPhoneUI() {
   stopBtn.addEventListener('click', stopNavigation)
   recalcBtn.addEventListener('click', async () => {
     if (!currentRoute || !lastPosition) return
-    const dest = currentRoute.steps[currentRoute.steps.length - 1]
-    await recalculate(dest.location)
+    await recalculate(currentRoute.steps[currentRoute.steps.length - 1].location)
   })
 }
 
@@ -120,20 +120,19 @@ async function startNavigation(destination: string) {
   const step = currentRoute.steps[0]
   const nextLoc = currentRoute.steps[1]?.location ?? step.location
   const dist = haversineDistance(position, nextLoc)
-  await updateNavDisplay(bridge, step, dist, currentRoute, 0)
+  const mapPixels = renderMapImage(currentRoute.geometry, position, nextLoc)
+  await updateNavDisplay(bridge, step, dist, currentRoute, 0, mapPixels)
 
   setStatus(`Navigating — ${formatDistance(currentRoute.totalDistance)}, ${formatDuration(currentRoute.totalDuration)}`)
   startTracking()
 }
 
 function stopNavigation() {
-  if (watchId !== null) {
-    navigator.geolocation.clearWatch(watchId)
-    watchId = null
-  }
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null }
   currentRoute = null
   isNavigating = false
   previewOffset = 0
+  mapSendInFlight = false
   setNavigating(false)
   setStatus('Navigation stopped.')
   if (bridge) showMessage(bridge, 'G2 Car Nav', 'Navigation stopped')
@@ -150,7 +149,8 @@ async function recalculate(destination: [number, number]) {
     const step = currentRoute.steps[0]
     const nextLoc = currentRoute.steps[1]?.location ?? step.location
     const dist = haversineDistance(lastPosition, nextLoc)
-    await updateNavDisplay(bridge, step, dist, currentRoute, 0)
+    const mapPixels = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
+    await updateNavDisplay(bridge, step, dist, currentRoute, 0, mapPixels)
     setStatus('Route updated.')
   } catch {
     setStatus('Recalculation failed.')
@@ -176,10 +176,7 @@ async function onPosition(pos: GeolocationPosition) {
   lastPosition = coords
 
   const newIndex = resolveActiveStep(coords, currentRoute.steps, activeStepIndex)
-  if (newIndex !== activeStepIndex) {
-    activeStepIndex = newIndex
-    previewOffset = 0
-  }
+  if (newIndex !== activeStepIndex) { activeStepIndex = newIndex; previewOffset = 0 }
 
   const step = currentRoute.steps[activeStepIndex]
   const isLast = activeStepIndex >= currentRoute.steps.length - 1
@@ -196,7 +193,15 @@ async function onPosition(pos: GeolocationPosition) {
   }
 
   if (previewOffset === 0) {
-    await updateNavDisplay(bridge, step, distToNext, currentRoute, activeStepIndex)
+    // Render map (skip if a send is already in flight to avoid concurrent sends)
+    let mapPixels: number[] | null = null
+    if (!mapSendInFlight) {
+      mapPixels = renderMapImage(currentRoute.geometry, coords, isLast ? null : nextLoc)
+      mapSendInFlight = true
+    }
+
+    await updateNavDisplay(bridge, step, distToNext, currentRoute, activeStepIndex, mapPixels)
+    mapSendInFlight = false
   }
 
   updateSpeedDisplay(pos.coords.speed)
@@ -207,7 +212,6 @@ async function onPosition(pos: GeolocationPosition) {
 function handleGlassesInput(event: EvenHubEvent) {
   if (!bridge || !currentRoute || !isNavigating) return
 
-  // Touch events come in as textEvent or sysEvent depending on which container captured them
   const rawType = event.textEvent?.eventType ?? event.sysEvent?.eventType
   const total = currentRoute.steps.length
 
@@ -227,7 +231,8 @@ function handleGlassesInput(event: EvenHubEvent) {
       const step = currentRoute.steps[activeStepIndex]
       const nextLoc = currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
       const dist = haversineDistance(lastPosition, nextLoc)
-      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex)
+      const mapPixels = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
+      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex, mapPixels)
     } else if (previewOffset > 0) {
       const step = currentRoute.steps[activeStepIndex + previewOffset]
       showStepPreview(bridge, step, activeStepIndex + previewOffset + 1, total)
@@ -241,15 +246,14 @@ function handleGlassesInput(event: EvenHubEvent) {
       const step = currentRoute.steps[activeStepIndex]
       const nextLoc = currentRoute.steps[activeStepIndex + 1]?.location ?? step.location
       const dist = haversineDistance(lastPosition, nextLoc)
-      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex)
+      const mapPixels = renderMapImage(currentRoute.geometry, lastPosition, nextLoc)
+      updateNavDisplay(bridge, step, dist, currentRoute, activeStepIndex, mapPixels)
     }
     return
   }
 
   if (rawType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-    const dest = currentRoute.steps[currentRoute.steps.length - 1]
-    recalculate(dest.location)
-    return
+    recalculate(currentRoute.steps[currentRoute.steps.length - 1].location)
   }
 }
 
@@ -282,8 +286,6 @@ function updateSpeedDisplay(speedMs: number | null) {
     ? `${Math.round(speedMs * 3.6)} km/h`
     : '-- km/h'
 }
-
-// ── Start ─────────────────────────────────────────────────────────────────────
 
 boot().catch((err) => {
   console.error('Boot failed:', err)
